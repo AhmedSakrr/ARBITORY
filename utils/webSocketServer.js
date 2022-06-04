@@ -12,13 +12,14 @@ const io = new Server(server, {
   }
 });
 
-const data3 = []
+//EMPTY OBJECT
+let FullCoinList = []
 
 io.on('connection', socket => {
   console.log('connection made successfully')
-  
+
   //KULLANICI BAGLANDIĞINDA BIR DATA GONDER
-  socket.broadcast.emit('message',data3)
+  io.sockets.emit("message", FullCoinList);
 
   socket.on('message', payload => {
     console.log('Message received on server: ', payload)
@@ -61,37 +62,81 @@ io.on('connection', socket => {
 
 
 setInterval(() => {
+
+
   const data1 = axios.get('https://ftx.com/api/markets')
   const data2 = axios.get('https://api3.binance.com/api/v3/ticker/price')
 
   Promise.all([data1, data2])
     // .then(files => {files.forEach(file => )})
     .then(files => {
-  
+
       console.log("Datas fetched!")
+
+      FullCoinList = []
+      const coin = new Object()
       try {
-        const JSONOBJ = files[0].data.result
-        const JSonModified = JSON.stringify(JSONOBJ).replace(/[/]/g, "");
-        const JsONAgain = JSON.parse(JSonModified)
-        JsONAgain.filter((a) => {
-          files[1].data.find((p) => {
-            if(p.symbol === a.name){
-              a.binancePrice = p.price
-              data3.push(a)
-            }
+        //BINANCE MARKET
+        const modifiedBinance = files[1].data
+
+        //FTX MARKET
+        const JSONftx = files[0].data.result
+        const modifiedFTX = JSON.parse(JSON.stringify(JSONftx).replace(/[/]/g, ""))
+        const finalFTX = modifiedFTX.filter((a) => !a.name.includes("-"))
+
+        try {
+          modifiedBinance.forEach(object2 => {
+              const coin = new Object()
+              coin.name = object2.symbol
+              coin.priceBinance = object2.price
+              FullCoinList.push(coin)
           })
-          
-        })
-        console.log("Datas:" + data3)
-        io.sockets.emit("message", data3);
+
+
+          finalFTX.forEach(obj => {
+            const coin = new Object()
+            coin.name = obj.name
+            coin.priceFTX = obj.last
+            FullCoinList.push(coin)
+          })
+
+          FullCoinList.forEach((obj,index) =>{
+            FullCoinList.forEach((obj2, index2) =>{
+              const coin = new Object()
+              if(obj.name === obj2.name){
+                coin.name = obj2.name
+                if(obj2.priceFTX) coin.priceFTX = obj2.priceFTX
+                if(obj2.priceBinance) coin.priceBinance = obj2.priceBinance
+                if(obj.priceFTX) coin.priceFTX = obj.priceFTX
+                if(obj.priceBinance) coin.priceBinance = obj.priceBinance
+                FullCoinList[index] = coin
+              }
+            })
+          })
+
+        } catch (error) {
+          console.log(error)
+        }
+
+        // modifiedBinance.filter((a) => {
+        //   modifiedFTX.find((p) => {
+        //     if(a.symbol === p.name){
+        //       p.binancePrice = a.price
+        //       FullCoinList.push(p)
+        //     }
+        //   })
+        // })
+        console.log("Datas:" + uniqueFullCoinList)
+        io.sockets.emit("message", uniqueFullCoinList);
+
       } catch (error) {
-        console.log("Error oldu:" + error) 
+        console.log("Error oldu:" + error)
       }
-  
-  
+
+
     })
-    .catch(err => { })  
-}, 60000);
+    .catch(err => { })
+}, 30000);
 
 // setTimeout(() => {
 
