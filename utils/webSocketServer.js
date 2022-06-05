@@ -3,6 +3,7 @@ import { Server } from 'socket.io';
 import express from 'express';
 import { createServer } from 'http';
 import axios from 'axios'
+import { config } from 'process';
 
 const appSocket = express();
 const server = createServer(appSocket);
@@ -13,7 +14,7 @@ const io = new Server(server, {
 });
 
 //EMPTY OBJECT
-let FullCoinList = []
+let FullCoinList = new Object()
 
 io.on('connection', socket => {
   console.log('connection made successfully')
@@ -23,6 +24,9 @@ io.on('connection', socket => {
 
   socket.on('message', payload => {
     console.log('Message received on server: ', payload)
+    if (payload.message == 'TriggerFetching') {
+      FetchCoinListsFromMarkets()
+    }
     //io.emit('message',payload)
   })
 
@@ -31,103 +35,110 @@ io.on('connection', socket => {
   });
 })
 
-// const getPriceBinance = async () => {
-//   try {
-//     axios.get('https://api3.binance.com/api/v3/ticker/price')
-//       .then(function (response) {
-//         // handle success
-//         return response.data
-//         //io.sockets.emit("message", response.data);
-//       })
-//   } catch (error) {
-//     console.error(error)
-//   }
-// }
+setTimeout(() => {
+  FetchCoinListsFromMarkets()
+}, 60000);
 
-// const getPriceFTX = async () => {
-//   try {
-//     axios.get('https://ftx.com/api/markets')
-//       .then(function (response) {
-//         // handle success
+function FetchCoinListsFromMarkets() {
+  console.log("DATA is fetching")
 
-//         //io.sockets.emit("message", response.data.result);
-//         return response.data.result
-//       })
-//   } catch (error) {
-//     console.error(error)
-//   }
-// }
+  const data1 = axios.get('https://api3.binance.com/api/v3/ticker/24hr')
+  const data2 = axios.get('https://ftx.com/api/markets')
+  const data3 = axios.get('https://www.kucoin.com/_api/trade-front/market/getSymbol/all')
+  const data4 = axios.get('https://api-pub.bitfinex.com/v2/tickers?symbols=ALL')
 
-// const getPriceFTX = async () => { return await axios.get('https://ftx.com/api/markets') }
-
-
-setInterval(() => {
-
-
-  const data1 = axios.get('https://ftx.com/api/markets')
-  const data2 = axios.get('https://api3.binance.com/api/v3/ticker/price')
-
-  Promise.all([data1, data2])
-    // .then(files => {files.forEach(file => )})
+  Promise.all([data1, data2, data3, data4])
     .then(files => {
 
       console.log("Datas fetched!")
 
-      FullCoinList = []
-      const coin = new Object()
+      FullCoinList = new Object()
       try {
         //BINANCE MARKET
-        const modifiedBinance = files[1].data
+        const modifiedBinance = files[0].data
 
         //FTX MARKET
-        const JSONftx = files[0].data.result
+        const JSONftx = files[1].data.result
         const modifiedFTX = JSON.parse(JSON.stringify(JSONftx).replace(/[/]/g, ""))
         const finalFTX = modifiedFTX.filter((a) => !a.name.includes("-"))
 
+        //KUCOIN MARKET
+        const JSONKucoin = files[2].data.data
+        const modifiedKucoin = JSON.parse(JSON.stringify(JSONKucoin).replace(/[-]/g, ""))
+
+        //BITFINEX MARKET
+        const JSONBitFinex = files[3].data
+        const modifiedBitFinex = JSON.parse(JSON.stringify(JSONBitFinex).replace(/[:]/g, ""))
+
         try {
-          modifiedBinance.forEach(object2 => {
-              const coin = new Object()
-              coin.name = object2.symbol
-              coin.priceBinance = object2.price
-              FullCoinList.push(coin)
+          modifiedBinance.forEach(coin => {
+            if (coin.count > 400) {
+              FullCoinList[coin.symbol] = { ...FullCoinList[coin.symbol], name: coin.symbol, priceBinance: parseFloat(coin.lastPrice) }
+            }else{
+              FullCoinList[coin.symbol] = { ...FullCoinList[coin.symbol], name: coin.symbol, banned: "YES" }
+            }
           })
 
-
-          finalFTX.forEach(obj => {
-            const coin = new Object()
-            coin.name = obj.name
-            coin.priceFTX = obj.last
-            FullCoinList.push(coin)
+          finalFTX.forEach(coin => {
+            FullCoinList[coin.name] = { ...FullCoinList[coin.name], name: coin.name, priceFTX: parseFloat(coin.last) }
           })
 
-          FullCoinList.forEach((obj,index) =>{
-            FullCoinList.forEach((obj2, index2) =>{
-              const coin = new Object()
-              if(obj.name === obj2.name){
-                coin.name = obj2.name
-                if(obj2.priceFTX) coin.priceFTX = obj2.priceFTX
-                if(obj2.priceBinance) coin.priceBinance = obj2.priceBinance
-                if(obj.priceFTX) coin.priceFTX = obj.priceFTX
-                if(obj.priceBinance) coin.priceBinance = obj.priceBinance
-                FullCoinList[index] = coin
-              }
-            })
+          modifiedKucoin.forEach(coin => {
+            FullCoinList[coin.symbol] = { ...FullCoinList[coin.symbol], name: coin.symbol, priceKucoin: parseFloat(coin.lastTradedPrice) }
+          })
+
+          modifiedBitFinex.forEach(coin => {
+            FullCoinList[coin[0].substring(1)] = { ...FullCoinList[coin[0].substring(1)], name: coin[0].substring(1), priceBitFinex: parseFloat(coin[1]) }
           })
 
         } catch (error) {
           console.log(error)
         }
+        for (var key in FullCoinList) {
+          const checkPercentageArray = [
+            FullCoinList[key].priceKucoin,
+            FullCoinList[key].priceBinance,
+            FullCoinList[key].priceFTX,
+            FullCoinList[key].priceBitFinex
+          ]
 
-        // modifiedBinance.filter((a) => {
-        //   modifiedFTX.find((p) => {
-        //     if(a.symbol === p.name){
-        //       p.binancePrice = a.price
-        //       FullCoinList.push(p)
-        //     }
-        //   })
-        // })
-        console.log("Datas:" + uniqueFullCoinList)
-        io.sockets.emit("message", uniqueFullCoinList);
+          if (checkPercentageArray.filter(Boolean).length >= 2) {
+            const maxCoin = Math.max(
+              isNaN(FullCoinList[key].priceBinance) ? -Infinity : FullCoinList[key].priceBinance,
+              isNaN(FullCoinList[key].priceFTX) ? -Infinity : FullCoinList[key].priceFTX,
+              isNaN(FullCoinList[key].priceKucoin) ? -Infinity : FullCoinList[key].priceKucoin,
+              isNaN(FullCoinList[key].priceBitFinex) ? -Infinity : FullCoinList[key].priceBitFinex)
+
+            const minCoin = Math.min(
+              isNaN(FullCoinList[key].priceBinance) ? Infinity : FullCoinList[key].priceBinance,
+              isNaN(FullCoinList[key].priceFTX) ? Infinity : FullCoinList[key].priceFTX,
+              isNaN(FullCoinList[key].priceKucoin) ? Infinity : FullCoinList[key].priceKucoin,
+              isNaN(FullCoinList[key].priceBitFinex) ? Infinity : FullCoinList[key].priceBitFinex)
+
+            const percentageWin = maxCoin * 100 / minCoin - 100
+
+            FullCoinList[key].percentageWin = Math.abs(percentageWin).toFixed(2)
+            if (Math.abs(percentageWin).toFixed(2) > 40 || Math.abs(percentageWin).toFixed(2) < 0.5) {
+              //delete FullCoinList[key]
+            } else {
+              if (!isNaN(FullCoinList[key].priceBinance)) {
+                FullCoinList[key].priceBinance = FullCoinList[key].priceBinance.toFixed(10)
+              }
+              if (!isNaN(FullCoinList[key].priceFTX)) {
+                FullCoinList[key].priceFTX = FullCoinList[key].priceFTX.toFixed(10)
+              }
+              if (!isNaN(FullCoinList[key].priceKucoin)) {
+                FullCoinList[key].priceKucoin = FullCoinList[key].priceKucoin.toFixed(10)
+              }
+              if (!isNaN(FullCoinList[key].priceBitFinex)) {
+                FullCoinList[key].priceBitFinex = FullCoinList[key].priceBitFinex.toFixed(10)
+              }
+            }
+          } else {
+            delete FullCoinList[key]
+          }
+        }
+        io.sockets.emit("message", FullCoinList);
 
       } catch (error) {
         console.log("Error oldu:" + error)
@@ -136,14 +147,6 @@ setInterval(() => {
 
     })
     .catch(err => { })
-}, 30000);
-
-// setTimeout(() => {
-
-
-//   const comparedList = getPriceFTX.filter((a) => {
-//     return getPriceBinance.find((p) => p.symbol === a.name.replace("\"/\":", "\"\":"))
-//   })
-// }, 7000);
+}
 
 export default server
