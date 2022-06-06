@@ -46,8 +46,9 @@ function FetchCoinListsFromMarkets() {
   const data2 = axios.get('https://ftx.com/api/markets')
   const data3 = axios.get('https://www.kucoin.com/_api/trade-front/market/getSymbol/all')
   const data4 = axios.get('https://api-pub.bitfinex.com/v2/tickers?symbols=ALL')
+  const data5 = axios.get('https://api.huobi.pro/market/tickers')
 
-  Promise.all([data1, data2, data3, data4])
+  Promise.all([data1, data2, data3, data4, data5])
     .then(files => {
 
       console.log("Datas fetched!")
@@ -70,12 +71,15 @@ function FetchCoinListsFromMarkets() {
         const JSONBitFinex = files[3].data
         const modifiedBitFinex = JSON.parse(JSON.stringify(JSONBitFinex).replace(/[:]/g, ""))
 
+        //HUOBI MARKET
+        const modifiedHuobi = files[4].data.data
+
         try {
           modifiedBinance.forEach(coin => {
             if (coin.count > 400) {
               FullCoinList[coin.symbol] = { ...FullCoinList[coin.symbol], name: coin.symbol, priceBinance: parseFloat(coin.lastPrice) }
             }else{
-              FullCoinList[coin.symbol] = { ...FullCoinList[coin.symbol], name: coin.symbol, banned: "YES" }
+              FullCoinList[coin.symbol] = { ...FullCoinList[coin.symbol], name: coin.symbol, banned: true }
             }
           })
 
@@ -91,6 +95,10 @@ function FetchCoinListsFromMarkets() {
             FullCoinList[coin[0].substring(1)] = { ...FullCoinList[coin[0].substring(1)], name: coin[0].substring(1), priceBitFinex: parseFloat(coin[1]) }
           })
 
+          modifiedHuobi.forEach(coin => {
+            FullCoinList[coin.symbol.toUpperCase()] = { ...FullCoinList[coin.symbol.toUpperCase()], name: coin.symbol.toUpperCase(), priceHuobi: parseFloat(coin.close)}
+          })
+
         } catch (error) {
           console.log(error)
         }
@@ -99,7 +107,8 @@ function FetchCoinListsFromMarkets() {
             FullCoinList[key].priceKucoin,
             FullCoinList[key].priceBinance,
             FullCoinList[key].priceFTX,
-            FullCoinList[key].priceBitFinex
+            FullCoinList[key].priceBitFinex,
+            FullCoinList[key].priceHuobi
           ]
 
           if (checkPercentageArray.filter(Boolean).length >= 2) {
@@ -107,19 +116,21 @@ function FetchCoinListsFromMarkets() {
               isNaN(FullCoinList[key].priceBinance) ? -Infinity : FullCoinList[key].priceBinance,
               isNaN(FullCoinList[key].priceFTX) ? -Infinity : FullCoinList[key].priceFTX,
               isNaN(FullCoinList[key].priceKucoin) ? -Infinity : FullCoinList[key].priceKucoin,
-              isNaN(FullCoinList[key].priceBitFinex) ? -Infinity : FullCoinList[key].priceBitFinex)
+              isNaN(FullCoinList[key].priceBitFinex) ? -Infinity : FullCoinList[key].priceBitFinex,
+              isNaN(FullCoinList[key].priceHuobi) ? -Infinity : FullCoinList[key].priceHuobi)
 
             const minCoin = Math.min(
               isNaN(FullCoinList[key].priceBinance) ? Infinity : FullCoinList[key].priceBinance,
               isNaN(FullCoinList[key].priceFTX) ? Infinity : FullCoinList[key].priceFTX,
               isNaN(FullCoinList[key].priceKucoin) ? Infinity : FullCoinList[key].priceKucoin,
-              isNaN(FullCoinList[key].priceBitFinex) ? Infinity : FullCoinList[key].priceBitFinex)
+              isNaN(FullCoinList[key].priceBitFinex) ? Infinity : FullCoinList[key].priceBitFinex,
+              isNaN(FullCoinList[key].priceHuobi) ? Infinity : FullCoinList[key].priceHuobi)
 
             const percentageWin = maxCoin * 100 / minCoin - 100
 
             FullCoinList[key].percentageWin = Math.abs(percentageWin).toFixed(2)
-            if (Math.abs(percentageWin).toFixed(2) > 40 || Math.abs(percentageWin).toFixed(2) < 0.5) {
-              //delete FullCoinList[key]
+            if (Math.abs(percentageWin).toFixed(2) > 60 || Math.abs(percentageWin).toFixed(2) < 2 || FullCoinList[key].banned) {
+              delete FullCoinList[key]
             } else {
               if (!isNaN(FullCoinList[key].priceBinance)) {
                 FullCoinList[key].priceBinance = FullCoinList[key].priceBinance.toFixed(10)
@@ -133,11 +144,16 @@ function FetchCoinListsFromMarkets() {
               if (!isNaN(FullCoinList[key].priceBitFinex)) {
                 FullCoinList[key].priceBitFinex = FullCoinList[key].priceBitFinex.toFixed(10)
               }
+              if (!isNaN(FullCoinList[key].priceHuobi)) {
+                FullCoinList[key].priceHuobi = FullCoinList[key].priceHuobi.toFixed(10)
+              }
             }
           } else {
             delete FullCoinList[key]
           }
         }
+
+        FullCoinList = SortFullCoinList(FullCoinList)
         io.sockets.emit("message", FullCoinList);
 
       } catch (error) {
@@ -147,6 +163,16 @@ function FetchCoinListsFromMarkets() {
 
     })
     .catch(err => { })
+}
+
+const SortFullCoinList = obj =>{
+  const arr = Object.keys(obj).map(el => {
+    return obj[el]
+  })
+  arr.sort((a,b) => {
+    return b.percentageWin-a.percentageWin;
+  })
+  return arr
 }
 
 export default server

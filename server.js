@@ -4,8 +4,6 @@ import 'express-async-errors'
 import connectDB from './db/connect.js'
 dotenv.config()
 
-
-
 const port = process.env.port || 5000
 
 import app from './app.js'
@@ -21,11 +19,9 @@ const start = async () => {
 
 start()
 
-
-
-import server from './utils/webSocketServer.js'
-// import server from './utils/webSocket.js'
-
+//import server from './utils/webSocketServer.js'
+import {server} from './utils/socketasServer.js'
+//import server from './utils/socketasClient.js'
 
 server.listen(7000,()=>{
     console.log('Listening socket server at port: 7000)');
